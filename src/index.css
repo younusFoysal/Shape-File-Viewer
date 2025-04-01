@@ -24,3 +24,12 @@
 .ol-zoom button:hover {
   background-color: #f3f4f6 !important;
 }
+
+
+.ol-overlay-container {
+  z-index: 10;
+}
+
+.popup-overlay, .notes-card-overlay {
+  transition: transform 0.3s ease-in-out;
+}

@@ -1,13 +1,12 @@
 
-
-import MapOne from "./components/MapOne.tsx";
+import ShapeFileView from "./components/ShapeFileView.tsx";
 
 
 function App() {
 
   return (
      <div>
-       <MapOne />
+       <ShapeFileView />
      </div>
   );
 }

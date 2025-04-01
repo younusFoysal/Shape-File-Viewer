@@ -8,11 +8,26 @@ import VectorSource from 'ol/source/Vector';
 import OSM from 'ol/source/OSM';
 import GeoJSON from 'ol/format/GeoJSON';
 import { fromLonLat } from 'ol/proj';
-import {Upload, FileUp, AlertCircle, MapPinned} from 'lucide-react';
+import {Upload, FileUp, AlertCircle, MapPinned, Eye, Plus} from 'lucide-react';
 import shp from 'shpjs';
 import { Buffer } from 'buffer';
 import { Style, Fill, Stroke } from 'ol/style';
+import Overlay from 'ol/Overlay';
+import Feature from 'ol/Feature';
+import SideDrawer from "./Shared/SideDrawer.tsx";
+import { v4 as uuidv4 } from 'uuid';
+import {getFileFromIndexedDB, getSavedFiles, saveToLocalStorage} from "../utils/storage.tsx";
 
+interface Note {
+    id: string;
+    title: string;
+    description: string;
+    timestamp: string;
+}
+
+interface FeatureNotes {
+    [featureId: string]: Note[];
+}
 
 // Polyfill for Buffer.isBuffer
 if (typeof window !== 'undefined') {
@@ -20,9 +35,7 @@ if (typeof window !== 'undefined') {
     Buffer.isBuffer = (obj) => obj instanceof Buffer;
 }
 
-
-const MapOne = () => {
-
+const ShapeFileView = () => {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<Map | null>(null);
     const vectorLayer = useRef<VectorLayer<VectorSource> | null>(null);
@@ -31,6 +44,30 @@ const MapOne = () => {
     const [shapefiles, setShapefiles] = useState<{ [key: string]: ArrayBuffer }>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Notes States
+    const [hoveredFeature, setHoveredFeature] = useState<Feature | null>(null);
+    const [showAddNoteModal, setShowAddNoteModal] = useState(false);
+    const [showViewNotesModal, setShowViewNotesModal] = useState(false);
+    const [noteTitle, setNoteTitle] = useState('');
+    const [noteDescription, setNoteDescription] = useState('');
+    const [notes, setNotes] = useState<FeatureNotes>({});
+    const popupRef = useRef<HTMLDivElement>(null);
+    const popupOverlay = useRef<Overlay | null>(null);
+    const notesCardRef = useRef<HTMLDivElement>(null);
+    const notesCardOverlay = useRef<Overlay | null>(null);
+    const [popupPosition, setPopupPosition] = useState<number[] | undefined>();
+    const [isMouseOverPopup, setIsMouseOverPopup] = useState(false);
+    const [isMouseOverNotesCard, setIsMouseOverNotesCard] = useState(false);
+
+    const [savedFiles, setSavedFiles] = useState<Record<string, any>>({});
+    const [currentFileId, setCurrentFileId] = useState<string | null>(null);
+    // const [notes, setNotes] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        const files = getSavedFiles();
+        setSavedFiles(files);
+    }, []);
 
     useEffect(() => {
         if (!map.current && mapContainer.current) {
@@ -61,8 +98,146 @@ const MapOne = () => {
                     zoom: 9
                 })
             });
+
+            // Create popup overlay for buttons
+            popupOverlay.current = new Overlay({
+                element: popupRef.current!,
+                positioning: 'top-left',
+                stopEvent: true,
+                autoPan: false
+            });
+            map.current.addOverlay(popupOverlay.current);
+
+            // Add a manual event listener to the popup element
+            popupRef.current!.addEventListener('mouseenter', () => {
+                setIsMouseOverPopup(true);
+            });
+
+            popupRef.current!.addEventListener('mouseleave', () => {
+                setIsMouseOverPopup(false);
+            });
+
+            // Create overlay for notes card
+            notesCardOverlay.current = new Overlay({
+                element: notesCardRef.current!,
+                positioning: 'top-left',
+                stopEvent: false,
+                offset: [0, 50]
+            });
+            map.current.addOverlay(notesCardOverlay.current);
+
+            // Add event listeners to notes card
+            notesCardRef.current!.addEventListener('mouseenter', () => {
+                setIsMouseOverNotesCard(true);
+            });
+
+            notesCardRef.current!.addEventListener('mouseleave', () => {
+                setIsMouseOverNotesCard(false);
+            });
+
+            let currentFeature: Feature | null = null;
+            let timeoutId: number | null = null;
+
+            // Add hover interaction
+            map.current.on('pointermove', (e) => {
+                if (e.dragging) return;
+
+                const hit = map.current!.forEachFeatureAtPixel(e.pixel, (feature) => feature);
+
+                if (hit) {
+                    // Clear any existing timeout
+                    if (timeoutId) {
+                        window.clearTimeout(timeoutId);
+                        timeoutId = null;
+                    }
+
+                    if (hit !== currentFeature) {
+                        currentFeature = hit as Feature;
+                        setHoveredFeature(currentFeature);
+
+                        // Get feature's center coordinate for stable button position
+                        const geometry = currentFeature.getGeometry();
+                        if (geometry) {
+                            const extent = geometry.getExtent();
+                            const center = [
+                                (extent[0] + extent[2]) / 2, // Center X
+                                (extent[1] + extent[3]) / 2  // Center Y
+                            ];
+                            setPopupPosition(center);
+                            popupOverlay.current!.setPosition(center);
+                            notesCardOverlay.current!.setPosition(center);
+                        }
+                    }
+                } else {
+                    // Only hide if not over popup or notes card
+                    if (currentFeature && !isMouseOverPopup && !isMouseOverNotesCard) {
+                        // Set a timeout to hide the overlays
+                        if (timeoutId) {
+                            window.clearTimeout(timeoutId);
+                        }
+
+                        timeoutId = window.setTimeout(() => {
+                            // Double-check before hiding
+                            if (!isMouseOverPopup && !isMouseOverNotesCard) {
+                                currentFeature = null;
+                                setHoveredFeature(null);
+                                setPopupPosition(undefined);
+                                popupOverlay.current!.setPosition(undefined);
+                                notesCardOverlay.current!.setPosition(undefined);
+                            }
+                        }, 300);
+                    }
+                }
+            });
+
+            // Add click handler to close popups when clicking elsewhere
+            map.current.on('click', (e) => {
+                const hit = map.current!.forEachFeatureAtPixel(e.pixel, (feature) => feature);
+                if (!hit && !isMouseOverPopup && !isMouseOverNotesCard) {
+                    currentFeature = null;
+                    setHoveredFeature(null);
+                    setPopupPosition(undefined);
+                    popupOverlay.current!.setPosition(undefined);
+                    notesCardOverlay.current!.setPosition(undefined);
+                }
+            });
         }
     }, []);
+
+    // Add effect to update popup behavior when mouse state changes
+    useEffect(() => {
+        // This effect ensures the popup stays visible when mouse is over it
+        if (isMouseOverPopup || isMouseOverNotesCard) {
+            // Keep popup visible
+            if (popupPosition && popupOverlay.current) {
+                popupOverlay.current.setPosition(popupPosition);
+            }
+            if (popupPosition && notesCardOverlay.current) {
+                notesCardOverlay.current.setPosition(popupPosition);
+            }
+        }
+    }, [isMouseOverPopup, isMouseOverNotesCard, popupPosition]);
+
+    const addNote = () => {
+        if (!hoveredFeature || !noteTitle.trim() || !noteDescription.trim()) return;
+
+        const featureId = hoveredFeature.ol_uid;
+        const newNote: Note = {
+            id: Math.random().toString(36).substr(2, 9),
+            title: noteTitle,
+            description: noteDescription,
+            timestamp: new Date().toISOString()
+        };
+
+        setNotes(prev => ({
+            ...prev,
+            [featureId]: [...(prev[featureId] || []), newNote]
+        }));
+
+        setNoteTitle('');
+        setNoteDescription('');
+        setShowAddNoteModal(false);
+    };
 
     // Add this function to debug feature geometry
     const debugFeatureGeometry = (geojson: any) => {
@@ -77,7 +252,6 @@ const MapOne = () => {
         }
     };
 
-
     const processShapefiles = async (files = shapefiles) => {
         try {
             setLoading(true);
@@ -91,10 +265,9 @@ const MapOne = () => {
                 throw new Error(`Required files missing: ${missingFiles.join(', ')}`);
             }
 
-            // Create proper Buffer instances
+            // Convert ArrayBuffer to Buffer for shpjs
             const shpBuffer = Buffer.from(files['.shp']);
             const dbfBuffer = Buffer.from(files['.dbf']);
-
 
             // Add support for CPG file if available
             let cpgBuffer;
@@ -102,11 +275,12 @@ const MapOne = () => {
                 cpgBuffer = Buffer.from(files['.cpg']);
             }
 
-            // Use the Buffer instances with shpjs
+            // Parse the shapefile components
             const parsedShp = await shp.parseShp(shpBuffer);
             const parsedDbf = await shp.parseDbf(dbfBuffer, cpgBuffer);
-            const geojson = await shp.combine([parsedShp, parsedDbf]);
 
+            // Combine the parsed components
+            const geojson = await shp.combine([parsedShp, parsedDbf]);
 
             // Convert Polygons to MultiPolygons if needed
             if (geojson && geojson.features) {
@@ -129,6 +303,27 @@ const MapOne = () => {
 
             if (!geojson || !geojson.features || !geojson.features.length) {
                 throw new Error('No valid features found in the shapefile');
+            }
+
+            // Clear existing features
+            if (vectorLayer.current) {
+                vectorLayer.current.getSource()?.clear();
+            }
+
+            // Add new features
+            const format = new GeoJSON();
+            const features = format.readFeatures(geojson, {
+                featureProjection: 'EPSG:3857'
+            });
+
+            if (vectorLayer.current) {
+                vectorLayer.current.getSource()?.addFeatures(features);
+
+                // Fit view to features extent
+                const extent = vectorLayer.current.getSource()?.getExtent();
+                if (extent) {
+                    map.current?.getView().fit(extent, { padding: [50, 50, 50, 50] });
+                }
             }
 
             if (vectorLayer.current) {
@@ -167,7 +362,6 @@ const MapOne = () => {
             setLoading(false);
         }
     };
-
 
     // Helper Function to check if an extent is empty
     const isEmptyExtent = (extent: number[]): boolean => {
@@ -263,8 +457,28 @@ const MapOne = () => {
             const newShapefiles = { ...shapefiles };
             let hasNewFiles = false;
 
+
             for (const file of files) {
                 const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+                const fileId = uuidv4();
+                const fileData = await file.arrayBuffer();
+
+                // Save to local storage
+                saveToLocalStorage({
+                    id: fileId,
+                    name: file.name,
+                    date: new Date().toISOString(),
+                    notes: {},
+                    fileData
+                });
+
+                // Update state
+                setCurrentFileId(fileId);
+                setNotes({});
+
+                // Refresh saved files list
+                setSavedFiles(getSavedFiles());
 
                 if (['.shp', '.shx', '.dbf', '.prj', '.cpg'].includes(extension)) {
                     newShapefiles[extension] = await file.arrayBuffer();
@@ -290,10 +504,61 @@ const MapOne = () => {
                     setError(`Please upload the required files: ${missing.join(', ')}`);
                 }
             }
+
+
+
+
+
         } catch (error) {
             console.error('Error handling file upload:', error);
             setError(error instanceof Error ? error.message : 'Error handling file upload');
         }
+    };
+
+
+    const loadSavedFile = async (fileId: string) => {
+        try {
+            const fileData = await getFileFromIndexedDB(fileId);
+            if (!fileData) {
+                console.error('File data not found');
+                return;
+            }
+
+            // Get the metadata and notes
+            const savedFile = savedFiles[fileId];
+            setNotes(savedFile.notes || {});
+            setCurrentFileId(fileId);
+
+            // Process your shapefile here with the existing code
+            // Use fileData as your ArrayBuffer
+            // ...
+
+        } catch (error) {
+            console.error('Error loading saved file:', error);
+        }
+    };
+
+
+    const saveNote = (featureId: string, noteText: string) => {
+        if (!currentFileId) return;
+
+        // Update notes state
+        const updatedNotes = { ...notes, [featureId]: noteText };
+        setNotes(updatedNotes);
+
+        // Get current file data
+        const currentFile = savedFiles[currentFileId];
+        if (!currentFile) return;
+
+        // Update storage
+        saveToLocalStorage({
+            ...currentFile,
+            notes: updatedNotes,
+            fileData: null
+        });
+
+        // Refresh saved files list
+        setSavedFiles(getSavedFiles());
     };
 
     const getUploadedFiles = () => {
@@ -339,14 +604,14 @@ const MapOne = () => {
         }
     };
 
-
     return (
         <div className="min-h-screen bg-gray-100">
             <div className="flex h-screen">
+
                 {/* Sidebar */}
                 <div className="w-80 bg-white shadow-lg p-4 flex flex-col">
                     <h1 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                        <MapPinned className="w-6 h-6" />
+                        <MapPinned className="w-6 h-6"/>
                         Shapefile Viewer
                     </h1>
 
@@ -354,7 +619,7 @@ const MapOne = () => {
                     <div className="space-y-4 mb-6">
                         <div className="p-3 bg-blue-50 rounded-lg">
                             <div className="flex items-center gap-2 text-blue-700 mb-2">
-                                <AlertCircle className="w-4 h-4" />
+                                <AlertCircle className="w-4 h-4"/>
                                 <span className="font-medium">Required Files:</span>
                             </div>
                             <p className="text-sm text-blue-600">
@@ -362,8 +627,9 @@ const MapOne = () => {
                             </p>
                         </div>
 
-                        <label className="flex flex-col items-center px-4 py-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 cursor-pointer hover:bg-gray-100">
-                            <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                        <label
+                            className="flex flex-col items-center px-4 py-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 cursor-pointer hover:bg-gray-100">
+                            <Upload className="w-8 h-8 text-gray-400 mb-2"/>
                             <span className="text-sm text-gray-500 text-center">
                                 Upload Shapefile (.zip)<br/>
                                 or individual files (.shp, .shx, .dbf, .prj)
@@ -395,12 +661,13 @@ const MapOne = () => {
                         {getUploadedFiles().length > 0 && (
                             <div className="p-3 bg-blue-50 rounded-lg">
                                 <div className="flex items-center gap-2 text-blue-700 mb-2">
-                                    <FileUp className="w-4 h-4" />
+                                    <FileUp className="w-4 h-4"/>
                                     <span className="font-medium">Uploaded Files:</span>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     {getUploadedFiles().map(file => (
-                                        <span key={file} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                        <span key={file}
+                                              className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
                                             {file}
                                         </span>
                                     ))}
@@ -443,12 +710,122 @@ const MapOne = () => {
                         </div>
                     </div>
                 </div>
-
                 {/* Map Container */}
-                <div ref={mapContainer} className="flex-1" />
+                <div className="relative flex-1">
+                    <div ref={mapContainer} className="h-full" />
+
+                    {/* Popup for Add/View Notes buttons */}
+                    <div
+                        ref={popupRef}
+                        className={`absolute w-60  rounded-lg z-50 ${
+                            popupPosition || isMouseOverPopup ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                        } transition-opacity duration-300`}
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseEnter={() => setIsMouseOverPopup(true)}
+                        onMouseLeave={() => setIsMouseOverPopup(false)}
+                    >
+                        <div className="flex justify-between gap-2">
+                            <button
+                                onClick={() => setShowAddNoteModal(true)}
+                                className="flex w-1/2 items-center gap-1  px-3 py-2 bg-blue-500 text-sm text-white rounded hover:bg-blue-600 transition-colors"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Add Note
+                            </button>
+                            <button
+                                onClick={() => setShowViewNotesModal(true)}
+                                className="flex w-1/2 items-center gap-1 px-3 py-2 bg-gray-500 text-sm text-white rounded hover:bg-gray-600 transition-colors"
+                            >
+                                <Eye className="w-4 h-4" />
+                                View Notes
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Notes Card */}
+                    <div
+                        ref={notesCardRef}
+                        className={`absolute w-60  bg-white rounded-lg shadow-lg p-4 z-40 ${
+                            hoveredFeature && (notes[hoveredFeature.ol_uid]?.length > 0) ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                        } transition-opacity duration-300`}
+                        style={{ maxHeight: '300px', overflowY: 'auto', pointerEvents: 'auto' }}
+                        onMouseEnter={() => setIsMouseOverNotesCard(true)}
+                        onMouseLeave={() => setIsMouseOverNotesCard(false)}
+                    >
+                        {hoveredFeature && notes[hoveredFeature.ol_uid]?.slice(0, 5).map((note) => (
+                            <div key={note.id} className="mb-3 last:mb-0">
+                                <h4 className="font-semibold text-sm">{note.title}</h4>
+                                <p className="text-sm text-gray-600 line-clamp-2">{note.description}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
+
+            {/* Add Note Modal */}
+            <SideDrawer
+                isOpen={showAddNoteModal}
+                onClose={() => setShowAddNoteModal(false)}
+                title="Add Note"
+                wide="max-w-lg"
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Title
+                        </label>
+                        <input
+                            type="text"
+                            value={noteTitle}
+                            onChange={(e) => setNoteTitle(e.target.value)}
+                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Enter note title"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Description
+                        </label>
+                        <textarea
+                            value={noteDescription}
+                            onChange={(e) => setNoteDescription(e.target.value)}
+                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-32"
+                            placeholder="Enter note description"
+                        />
+                    </div>
+                    <button
+                        onClick={addNote}
+                        className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                    >
+                        Add Note
+                    </button>
+                </div>
+            </SideDrawer>
+
+            {/* View Notes Modal */}
+            <SideDrawer
+                isOpen={showViewNotesModal}
+                onClose={() => setShowViewNotesModal(false)}
+                title="View Notes"
+                wide="max-w-lg"
+            >
+                <div className="space-y-4">
+                    {hoveredFeature && notes[hoveredFeature.ol_uid]?.map((note) => (
+                        <div key={note.id} className="border-b last:border-b-0 pb-4">
+                            <h4 className="font-semibold">{note.title}</h4>
+                            <p className="text-gray-600 mt-1">{note.description}</p>
+                            <p className="text-sm text-gray-400 mt-2">
+                                {new Date(note.timestamp).toLocaleString()}
+                            </p>
+                        </div>
+                    ))}
+                    {(!hoveredFeature || !notes[hoveredFeature.ol_uid]?.length) && (
+                        <p className="text-gray-500 text-center">No notes available for this feature.</p>
+                    )}
+                </div>
+            </SideDrawer>
         </div>
     );
 };
 
-export default MapOne;
+export default ShapeFileView;
