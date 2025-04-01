@@ -15,8 +15,7 @@ import { Style, Fill, Stroke } from 'ol/style';
 import Overlay from 'ol/Overlay';
 import Feature from 'ol/Feature';
 import SideDrawer from "./Shared/SideDrawer.tsx";
-import { v4 as uuidv4 } from 'uuid';
-import {getFileFromIndexedDB, getSavedFiles, saveToLocalStorage} from "../utils/storage.tsx";
+
 
 interface Note {
     id: string;
@@ -27,6 +26,14 @@ interface Note {
 
 interface FeatureNotes {
     [featureId: string]: Note[];
+}
+
+interface SavedFile {
+    id: string;
+    name: string;
+    timestamp: string;
+    features: any[];
+    notes: FeatureNotes;
 }
 
 // Polyfill for Buffer.isBuffer
@@ -60,14 +67,18 @@ const ShapeFileView = () => {
     const [isMouseOverPopup, setIsMouseOverPopup] = useState(false);
     const [isMouseOverNotesCard, setIsMouseOverNotesCard] = useState(false);
 
-    const [savedFiles, setSavedFiles] = useState<Record<string, any>>({});
+    const [savedFiles, setSavedFiles] = useState<SavedFile[]>([]);
     const [currentFileId, setCurrentFileId] = useState<string | null>(null);
-    // const [notes, setNotes] = useState<Record<string, string>>({});
 
+
+    // Load saved files from localStorage on mount
     useEffect(() => {
-        const files = getSavedFiles();
-        setSavedFiles(files);
+        const savedFilesData = localStorage.getItem('savedFiles');
+        if (savedFilesData) {
+            setSavedFiles(JSON.parse(savedFilesData));
+        }
     }, []);
+
 
     useEffect(() => {
         if (!map.current && mapContainer.current) {
@@ -229,17 +240,71 @@ const ShapeFileView = () => {
             timestamp: new Date().toISOString()
         };
 
-        setNotes(prev => ({
-            ...prev,
-            [featureId]: [...(prev[featureId] || []), newNote]
-        }));
+
+        const updatedNotes = {
+            ...notes,
+            [featureId]: [...(notes[featureId] || []), newNote]
+        };
+
+        setNotes(updatedNotes);
+        saveCurrentState(updatedNotes);
 
         setNoteTitle('');
         setNoteDescription('');
         setShowAddNoteModal(false);
     };
 
-    // Add this function to debug feature geometry
+    const saveCurrentState = (currentNotes: FeatureNotes = notes) => {
+        if (!features.length) return;
+
+        const fileId = currentFileId || Math.random().toString(36).substr(2, 9);
+        const newSavedFile: SavedFile = {
+            id: fileId,
+            name: `Shapefile ${new Date().toLocaleDateString()}`,
+            timestamp: new Date().toISOString(),
+            features: features,
+            notes: currentNotes
+        };
+
+        const updatedSavedFiles = currentFileId
+            ? savedFiles.map(f => f.id === currentFileId ? newSavedFile : f)
+            : [...savedFiles, newSavedFile];
+
+        setSavedFiles(updatedSavedFiles);
+        setCurrentFileId(fileId);
+        localStorage.setItem('savedFiles', JSON.stringify(updatedSavedFiles));
+    };
+
+
+    const loadSavedFile = (fileId: string) => {
+        const savedFile = savedFiles.find(f => f.id === fileId);
+        if (!savedFile) return;
+
+        setCurrentFileId(fileId);
+        setFeatures(savedFile.features);
+        setNotes(savedFile.notes);
+
+        if (vectorLayer.current) {
+            vectorLayer.current.getSource()?.clear();
+            const format = new GeoJSON();
+            const features = format.readFeatures({
+                type: 'FeatureCollection',
+                features: savedFile.features
+            }, {
+                featureProjection: 'EPSG:3857'
+            });
+
+            vectorLayer.current.getSource()?.addFeatures(features);
+
+            const extent = vectorLayer.current.getSource()?.getExtent();
+            if (extent) {
+                map.current?.getView().fit(extent, { padding: [50, 50, 50, 50] });
+            }
+        }
+    };
+
+
+    //  debug feature geometry
     const debugFeatureGeometry = (geojson: any) => {
         console.log('GeoJSON type:', geojson.type);
         console.log('Features count:', geojson.features?.length || 0);
@@ -353,6 +418,9 @@ const ShapeFileView = () => {
 
             setFeatures(geojson.features);
             setSelectedFeature(null);
+            setNotes({});
+            setCurrentFileId(null);
+            saveCurrentState({});
         } catch (error) {
             console.error('Error processing shapefiles:', error);
             setError(error instanceof Error ? error.message : 'Error processing shapefiles');
@@ -429,7 +497,10 @@ const ShapeFileView = () => {
 
             setFeatures(geojson.features);
             setSelectedFeature(null);
-            setShapefiles({}); // Clear individual files state
+            setShapefiles({});
+            setNotes({});
+            setCurrentFileId(null);
+            saveCurrentState({});
         } catch (error) {
             console.error('Error loading ZIP file:', error);
             setError(error instanceof Error ? error.message : 'Error loading ZIP file');
@@ -457,28 +528,8 @@ const ShapeFileView = () => {
             const newShapefiles = { ...shapefiles };
             let hasNewFiles = false;
 
-
             for (const file of files) {
                 const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
-                const fileId = uuidv4();
-                const fileData = await file.arrayBuffer();
-
-                // Save to local storage
-                saveToLocalStorage({
-                    id: fileId,
-                    name: file.name,
-                    date: new Date().toISOString(),
-                    notes: {},
-                    fileData
-                });
-
-                // Update state
-                setCurrentFileId(fileId);
-                setNotes({});
-
-                // Refresh saved files list
-                setSavedFiles(getSavedFiles());
 
                 if (['.shp', '.shx', '.dbf', '.prj', '.cpg'].includes(extension)) {
                     newShapefiles[extension] = await file.arrayBuffer();
@@ -504,61 +555,10 @@ const ShapeFileView = () => {
                     setError(`Please upload the required files: ${missing.join(', ')}`);
                 }
             }
-
-
-
-
-
         } catch (error) {
             console.error('Error handling file upload:', error);
             setError(error instanceof Error ? error.message : 'Error handling file upload');
         }
-    };
-
-
-    const loadSavedFile = async (fileId: string) => {
-        try {
-            const fileData = await getFileFromIndexedDB(fileId);
-            if (!fileData) {
-                console.error('File data not found');
-                return;
-            }
-
-            // Get the metadata and notes
-            const savedFile = savedFiles[fileId];
-            setNotes(savedFile.notes || {});
-            setCurrentFileId(fileId);
-
-            // Process your shapefile here with the existing code
-            // Use fileData as your ArrayBuffer
-            // ...
-
-        } catch (error) {
-            console.error('Error loading saved file:', error);
-        }
-    };
-
-
-    const saveNote = (featureId: string, noteText: string) => {
-        if (!currentFileId) return;
-
-        // Update notes state
-        const updatedNotes = { ...notes, [featureId]: noteText };
-        setNotes(updatedNotes);
-
-        // Get current file data
-        const currentFile = savedFiles[currentFileId];
-        if (!currentFile) return;
-
-        // Update storage
-        saveToLocalStorage({
-            ...currentFile,
-            notes: updatedNotes,
-            fileData: null
-        });
-
-        // Refresh saved files list
-        setSavedFiles(getSavedFiles());
     };
 
     const getUploadedFiles = () => {
@@ -607,13 +607,33 @@ const ShapeFileView = () => {
     return (
         <div className="min-h-screen bg-gray-100">
             <div className="flex h-screen">
-
                 {/* Sidebar */}
                 <div className="w-80 bg-white shadow-lg p-4 flex flex-col">
                     <h1 className="text-2xl font-bold mb-4 flex items-center gap-2">
                         <MapPinned className="w-6 h-6"/>
                         Shapefile Viewer
                     </h1>
+
+                    {/* Saved Files Dropdown */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Saved Files
+                        </label>
+                        <div className="flex gap-2">
+                            <select
+                                value={currentFileId || ''}
+                                onChange={(e) => loadSavedFile(e.target.value)}
+                                className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">Select a saved file</option>
+                                {savedFiles.map(file => (
+                                    <option key={file.id} value={file.id}>
+                                        {file.name} ({new Date(file.timestamp).toLocaleDateString()})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
 
                     {/* File Upload */}
                     <div className="space-y-4 mb-6">
