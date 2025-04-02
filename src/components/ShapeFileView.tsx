@@ -15,6 +15,8 @@ import { Style, Fill, Stroke } from 'ol/style';
 import Overlay from 'ol/Overlay';
 import Feature from 'ol/Feature';
 import SideDrawer from "./Shared/SideDrawer.tsx";
+import { v4 as uuidv4 } from 'uuid';
+
 
 
 interface Note {
@@ -69,6 +71,10 @@ const ShapeFileView = () => {
 
     const [savedFiles, setSavedFiles] = useState<SavedFile[]>([]);
     const [currentFileId, setCurrentFileId] = useState<string | null>(null);
+    const [newNoteTitle, setNewNoteTitle] = useState<string>('');
+    const [newNoteText, setNewNoteText] = useState<string>('');
+
+
 
 
     // Load saved files from localStorage on mount
@@ -253,6 +259,46 @@ const ShapeFileView = () => {
         setNoteDescription('');
         setShowAddNoteModal(false);
     };
+
+    const handleAddNote = () => {
+        if (!hoveredFeature || !newNoteText.trim() || !currentFileId) return;
+
+        const featureId = hoveredFeature.ol_uid;
+        const newNote = {
+            id: uuidv4(),
+            text: newNoteText.trim(),
+            timestamp: new Date().toISOString()
+        };
+
+        // Update notes state
+        const updatedNotes = {
+            ...notes,
+            [featureId]: [...(notes[featureId] || []), newNote]
+        };
+
+        setNotes(updatedNotes);
+        saveCurrentState(updatedNotes);
+
+        // Clear the input field
+        setNewNoteText('');
+    };
+
+    const handleDeleteNote = (featureId: string, noteId: string) => {
+        if (!currentFileId) return;
+
+        // Filter out the note to delete
+        const updatedFeatureNotes = notes[featureId].filter(note => note.id !== noteId);
+
+        // Update notes state
+        const updatedNotes = {
+            ...notes,
+            [featureId]: updatedFeatureNotes
+        };
+
+        setNotes(updatedNotes);
+        saveCurrentState(updatedNotes);
+    };
+
 
     const saveCurrentState = (currentNotes: FeatureNotes = notes) => {
         if (!features.length) return;
@@ -745,16 +791,16 @@ const ShapeFileView = () => {
                         onMouseLeave={() => setIsMouseOverPopup(false)}
                     >
                         <div className="flex justify-between gap-2">
-                            <button
-                                onClick={() => setShowAddNoteModal(true)}
-                                className="flex w-1/2 items-center gap-1  px-3 py-2 bg-blue-500 text-sm text-white rounded hover:bg-blue-600 transition-colors"
-                            >
-                                <Plus className="w-4 h-4" />
-                                Add Note
-                            </button>
+                            {/*<button*/}
+                            {/*    onClick={() => setShowAddNoteModal(true)}*/}
+                            {/*    className="flex w-1/2 items-center gap-1  px-3 py-2 bg-blue-500 text-sm text-white rounded hover:bg-blue-600 transition-colors"*/}
+                            {/*>*/}
+                            {/*    <Plus className="w-4 h-4" />*/}
+                            {/*    Add Note*/}
+                            {/*</button>*/}
                             <button
                                 onClick={() => setShowViewNotesModal(true)}
-                                className="flex w-1/2 items-center gap-1 px-3 py-2 bg-gray-500 text-sm text-white rounded hover:bg-gray-600 transition-colors"
+                                className="flex w-1/2 items-center gap-1  px-3 py-2 bg-blue-500 text-sm text-white rounded hover:bg-blue-600 transition-colors"
                             >
                                 <Eye className="w-4 h-4" />
                                 View Notes
@@ -765,7 +811,7 @@ const ShapeFileView = () => {
                     {/* Notes Card */}
                     <div
                         ref={notesCardRef}
-                        className={`absolute w-60  bg-white rounded-lg shadow-lg p-4 z-40 ${
+                        className={`absolute w-56  bg-white rounded-lg shadow-lg p-4 z-40 ${
                             hoveredFeature && (notes[hoveredFeature.ol_uid]?.length > 0) ? 'opacity-100' : 'opacity-0 pointer-events-none'
                         } transition-opacity duration-300`}
                         style={{ maxHeight: '300px', overflowY: 'auto', pointerEvents: 'auto' }}
@@ -829,20 +875,129 @@ const ShapeFileView = () => {
                 title="View Notes"
                 wide="max-w-lg"
             >
-                <div className="space-y-4">
-                    {hoveredFeature && notes[hoveredFeature.ol_uid]?.map((note) => (
-                        <div key={note.id} className="border-b last:border-b-0 pb-4">
-                            <h4 className="font-semibold">{note.title}</h4>
-                            <p className="text-gray-600 mt-1">{note.description}</p>
-                            <p className="text-sm text-gray-400 mt-2">
-                                {new Date(note.timestamp).toLocaleString()}
-                            </p>
+                <div className="space-y-4 mt-4">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Feature Notes</h3>
+                    {hoveredFeature && notes[hoveredFeature.ol_uid]?.length > 0 ? (
+                        notes[hoveredFeature.ol_uid]?.map((note) => (
+                            <div
+                                key={note.id}
+                                className="bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500 hover:shadow-lg transition-shadow duration-200 mb-3"
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                        <h4 className="font-medium text-gray-900 mb-1">{note.title || 'Untitled Note'}</h4>
+                                        <p className="text-gray-700 whitespace-pre-wrap">{note.text}</p>
+                                        <div className="mt-2 flex items-center text-xs text-gray-500">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none"
+                                                 viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                            <span>{new Date(note.timestamp).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            const updatedNotes = {
+                                                ...notes,
+                                                [hoveredFeature.ol_uid]: notes[hoveredFeature.ol_uid].filter(n => n.id !== note.id)
+                                            };
+                                            setNotes(updatedNotes);
+                                            saveCurrentState(updatedNotes);
+                                        }}
+                                        className="text-gray-400 hover:text-red-500 transition-colors duration-200 ml-2"
+                                        aria-label="Delete note"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20"
+                                             fill="currentColor">
+                                            <path fillRule="evenodd"
+                                                  d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                                  clipRule="evenodd"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        hoveredFeature ? (
+                            <div
+                                className="bg-gray-50 rounded-lg p-4 text-center text-gray-500 border border-dashed border-gray-300">
+                                No notes for this feature. Add a note below.
+                            </div>
+                        ) : (
+                            <div
+                                className="bg-gray-50 rounded-lg p-4 text-center text-gray-500 border border-dashed border-gray-300">
+                                Hover over a feature to see or add notes.
+                            </div>
+                        )
+                    )}
+
+                    {hoveredFeature && (
+                        <div className="mt-4 bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            <div className="mb-3">
+                                <label htmlFor="note-title" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Note Title
+                                </label>
+                                <input
+                                    id="note-title"
+                                    type="text"
+                                    value={newNoteTitle}
+                                    onChange={(e) => setNewNoteTitle(e.target.value)}
+                                    placeholder="Enter a title for your note"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+
+                            <div className="mb-3">
+                                <label htmlFor="note-content" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Note Content
+                                </label>
+                                <textarea
+                                    id="note-content"
+                                    value={newNoteText}
+                                    onChange={(e) => setNewNoteText(e.target.value)}
+                                    placeholder="Add details about this feature..."
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                    rows={3}
+                                />
+                            </div>
+
+                            <div className="flex justify-end">
+                                <button
+                                    onClick={() => {
+                                        if (!newNoteText.trim() || !hoveredFeature) return;
+
+                                        // Create a new note with title
+                                        const newNote = {
+                                            id: uuidv4(),
+                                            title: newNoteTitle.trim() || 'Untitled Note',
+                                            text: newNoteText.trim(),
+                                            timestamp: new Date().toISOString()
+                                        };
+
+                                        // Update notes
+                                        const updatedNotes = {
+                                            ...notes,
+                                            [hoveredFeature.ol_uid]: [...(notes[hoveredFeature.ol_uid] || []), newNote]
+                                        };
+
+                                        setNotes(updatedNotes);
+                                        saveCurrentState(updatedNotes);
+
+                                        // Clear input fields
+                                        setNewNoteTitle('');
+                                        setNewNoteText('');
+                                    }}
+                                    disabled={!newNoteText?.trim()}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                                >
+                                    Add Note
+                                </button>
+                            </div>
                         </div>
-                    ))}
-                    {(!hoveredFeature || !notes[hoveredFeature.ol_uid]?.length) && (
-                        <p className="text-gray-500 text-center">No notes available for this feature.</p>
                     )}
                 </div>
+
             </SideDrawer>
         </div>
     );
