@@ -8,7 +8,7 @@ import VectorSource from 'ol/source/Vector';
 import OSM from 'ol/source/OSM';
 import GeoJSON from 'ol/format/GeoJSON';
 import { fromLonLat } from 'ol/proj';
-import {Upload, FileUp, AlertCircle, MapPinned, Eye, Plus} from 'lucide-react';
+import {Upload, FileUp, AlertCircle, MapPinned, Eye} from 'lucide-react';
 import shp from 'shpjs';
 import { Buffer } from 'buffer';
 import { Style, Fill, Stroke } from 'ol/style';
@@ -669,7 +669,7 @@ const ShapeFileView = () => {
                             <select
                                 value={currentFileId || ''}
                                 onChange={(e) => loadSavedFile(e.target.value)}
-                                className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             >
                                 <option value="">Select a saved file</option>
                                 {savedFiles.map(file => (
@@ -683,12 +683,12 @@ const ShapeFileView = () => {
 
                     {/* File Upload */}
                     <div className="space-y-4 mb-6">
-                        <div className="p-3 bg-blue-50 rounded-lg">
-                            <div className="flex items-center gap-2 text-blue-700 mb-2">
+                        <div className="p-3 bg-indigo-50 rounded-lg">
+                            <div className="flex items-center gap-2 text-indigo-700 mb-2">
                                 <AlertCircle className="w-4 h-4"/>
                                 <span className="font-medium">Required Files:</span>
                             </div>
-                            <p className="text-sm text-blue-600">
+                            <p className="text-sm text-indigo-600">
                                 Upload both .SHP and .DBF files, or a ZIP containing both.
                             </p>
                         </div>
@@ -711,8 +711,8 @@ const ShapeFileView = () => {
 
                         {/* Loading State */}
                         {loading && (
-                            <div className="p-3 bg-blue-50 rounded-lg">
-                                <p className="text-blue-700">Processing files...</p>
+                            <div className="p-3 bg-indigo-50 rounded-lg">
+                                <p className="text-indigo-700">Processing files...</p>
                             </div>
                         )}
 
@@ -725,21 +725,21 @@ const ShapeFileView = () => {
 
                         {/* Show uploaded files */}
                         {getUploadedFiles().length > 0 && (
-                            <div className="p-3 bg-blue-50 rounded-lg">
-                                <div className="flex items-center gap-2 text-blue-700 mb-2">
+                            <div className="p-3 bg-indigo-50 rounded-lg">
+                                <div className="flex items-center gap-2 text-indigo-700 mb-2">
                                     <FileUp className="w-4 h-4"/>
                                     <span className="font-medium">Uploaded Files:</span>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     {getUploadedFiles().map(file => (
                                         <span key={file}
-                                              className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                              className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-sm">
                                             {file}
                                         </span>
                                     ))}
                                 </div>
                                 {getMissingRequiredFiles().length > 0 && (
-                                    <div className="mt-2 text-sm text-blue-700">
+                                    <div className="mt-2 text-sm text-indigo-700">
                                         Still needed: {getMissingRequiredFiles().join(', ')}
                                     </div>
                                 )}
@@ -756,7 +756,7 @@ const ShapeFileView = () => {
                                     key={index}
                                     className={`p-3 rounded cursor-pointer ${
                                         selectedFeature === feature
-                                            ? 'bg-blue-100 border-blue-300'
+                                            ? 'bg-indigo-100 border-indigo-300'
                                             : 'bg-gray-50 hover:bg-gray-100'
                                     }`}
                                     onClick={() => highlightFeature(feature)}
@@ -793,14 +793,14 @@ const ShapeFileView = () => {
                         <div className="flex justify-between gap-2">
                             {/*<button*/}
                             {/*    onClick={() => setShowAddNoteModal(true)}*/}
-                            {/*    className="flex w-1/2 items-center gap-1  px-3 py-2 bg-blue-500 text-sm text-white rounded hover:bg-blue-600 transition-colors"*/}
+                            {/*    className="flex w-1/2 items-center gap-1  px-3 py-2 bg-indigo-500 text-sm text-white rounded hover:bg-indigo-600 transition-colors"*/}
                             {/*>*/}
                             {/*    <Plus className="w-4 h-4" />*/}
                             {/*    Add Note*/}
                             {/*</button>*/}
                             <button
                                 onClick={() => setShowViewNotesModal(true)}
-                                className="flex w-1/2 items-center gap-1  px-3 py-2 bg-blue-500 text-sm text-white rounded hover:bg-blue-600 transition-colors"
+                                className="flex items-center gap-1  px-3 py-2 bg-indigo-500 shadow-md text-sm text-white rounded hover:bg-indigo-600 transition-colors"
                             >
                                 <Eye className="w-4 h-4" />
                                 View Notes
@@ -844,7 +844,7 @@ const ShapeFileView = () => {
                             type="text"
                             value={noteTitle}
                             onChange={(e) => setNoteTitle(e.target.value)}
-                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             placeholder="Enter note title"
                         />
                     </div>
@@ -855,13 +855,13 @@ const ShapeFileView = () => {
                         <textarea
                             value={noteDescription}
                             onChange={(e) => setNoteDescription(e.target.value)}
-                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-32"
+                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32"
                             placeholder="Enter note description"
                         />
                     </div>
                     <button
                         onClick={addNote}
-                        className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                        className="w-full px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition-colors"
                     >
                         Add Note
                     </button>
@@ -881,7 +881,7 @@ const ShapeFileView = () => {
                         notes[hoveredFeature.ol_uid]?.map((note) => (
                             <div
                                 key={note.id}
-                                className="bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500 hover:shadow-lg transition-shadow duration-200 mb-3"
+                                className="bg-white rounded-md shadow-md p-4 border-l-4 border-indigo-500 hover:shadow-lg transition-shadow duration-200 mb-3"
                             >
                                 <div className="flex justify-between items-start">
                                     <div className="flex-1">
@@ -944,7 +944,7 @@ const ShapeFileView = () => {
                                     value={newNoteTitle}
                                     onChange={(e) => setNewNoteTitle(e.target.value)}
                                     placeholder="Enter a title for your note"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 />
                             </div>
 
@@ -957,7 +957,7 @@ const ShapeFileView = () => {
                                     value={newNoteText}
                                     onChange={(e) => setNewNoteText(e.target.value)}
                                     placeholder="Add details about this feature..."
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
                                     rows={3}
                                 />
                             </div>
@@ -989,7 +989,7 @@ const ShapeFileView = () => {
                                         setNewNoteText('');
                                     }}
                                     disabled={!newNoteText?.trim()}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:shadow-xl hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                                 >
                                     Add Note
                                 </button>

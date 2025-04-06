@@ -7,7 +7,7 @@ const SideDrawer = ({ isOpen, onClose, title, children, wide }) => {
         <AnimatePresence>
             {isOpen && (
                 <motion.div
-                    className="fixed inset-0 bg-black bg-opacity-0  flex justify-end z-50"
+                    className="fixed inset-0 bg-black bg-opacity-0  flex justify-end z-50  h-screen"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0, transition: { duration: 0.3, ease: "easeOut" } }}
@@ -18,12 +18,12 @@ const SideDrawer = ({ isOpen, onClose, title, children, wide }) => {
                         animate={{ x: 0 }} // Slide in from the right
                         exit={{ x: "100%" }} // Slide out to the right
                         transition={{ duration: 0.4, ease: "easeInOut" }}
-                        className={`bg-white h-full drop-shadow-xl w-full ${
+                        className={`bg-white h-full overflow-scroll drop-shadow-xl w-full ${
                             wide ? wide : "max-w-lg"
                         } p-6 relative`}
                         onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
                     >
-                        <div className="flex justify-between items-center mb-4">
+                        <div className="flex justify-between items-center mb-4 ">
                             <h2 className="text-xl font-semibold text-gray-900 ">
                                 {title}
                             </h2>
